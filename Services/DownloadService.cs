@@ -2,21 +2,21 @@ class DownloadService
 {
     private readonly HttpClient _httpClient = new();
 
-    public async Task ShowProgress(Stream input, HttpResponseMessage response, FileStream output)
+    public async Task ShowProgress(Stream input, HttpResponseMessage response, FileStream output, CancellationToken cancellationToken)
     {
         byte[] bytes = new byte[50000];
         long downloadedBytes = 0;
         long totalBytes = response.Content.Headers.ContentLength ?? -1;
         while (true)
         {
-            int bytesRead = await input.ReadAsync(bytes, CancellationToken.None);
+            int bytesRead = await input.ReadAsync(bytes, cancellationToken);
 
             if (bytesRead == 0)
             {
                 break;
             }
 
-            await output.WriteAsync(bytes.AsMemory(0, bytesRead), CancellationToken.None);
+            await output.WriteAsync(bytes.AsMemory(0, bytesRead), cancellationToken);
 
             downloadedBytes += bytesRead;
 
@@ -53,7 +53,7 @@ class DownloadService
                 FileAccess.Write,
                 FileShare.None);
 
-        await ShowProgress(input, response, output);
+        await ShowProgress(input, response, output, cancellationToken);
 
         Console.WriteLine("Download completed.");
     }
