@@ -3,11 +3,10 @@
     static async Task Main()
     {
         var service = new DownloadService();
+        var url = "https://httptest.pp.ua/range/1048576";
+        var destination = "downloaded-file";
         using CancellationTokenSource tokenSource = new();
-        Task downloadTask = service.DownloadAsync(
-            "https://cdn.truefilesize.com/test/test-1mb.bin",
-            "downloaded-file",
-            tokenSource.Token);
+        Task downloadTask = service.DownloadAsync(url, destination, tokenSource.Token);
 
         Task listenForkey = Task.Run(() =>
         {
@@ -27,8 +26,9 @@
         {
             await downloadTask;
         }
-        catch (OperationCanceledException)
+        catch (Exception e)
         {
+            Console.WriteLine(e.Message);
             Console.WriteLine("Download cancelled");
         }
     }
