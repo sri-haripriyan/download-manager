@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -5,8 +6,11 @@ class DownloadService
 {
     private readonly HttpClient _httpClient = new();
 
-    public async Task ShowProgress(Stream input, FileStream output, long existingBytes, long totalBytes, CancellationToken cancellationToken)
+
+    public async Task ShowProgress(Stream input, FileStream output, long existingBytes, long totalBytes, CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
     {
+        long sessionBytes = 0;
+        Stopwatch stopwatch = Stopwatch.StartNew();
         byte[] bytes = new byte[50000];
         while (true)
         {
@@ -20,11 +24,32 @@ class DownloadService
             await output.WriteAsync(bytes.AsMemory(0, bytesRead), cancellationToken);
 
             existingBytes += bytesRead;
+            sessionBytes += bytesRead;
+            double elapsedTime = stopwatch.Elapsed.TotalSeconds;
+            double speed = sessionBytes / elapsedTime;
 
-            if (totalBytes > 0)
+            if (totalBytes > 0 && speed > 0)
             {
-                double progress = Math.Round((double)existingBytes / totalBytes * 100, 2);
-                Console.WriteLine($"Download progress: {progress} %");
+                double percentage =
+                    (double)existingBytes /
+                    totalBytes * 100;
+
+                long remainingBytes =
+                    totalBytes - existingBytes;
+
+                long etaSeconds = (long)Math.Ceiling(remainingBytes / speed);
+
+                TimeSpan eta =
+                    TimeSpan.FromSeconds(etaSeconds);
+
+                progress.Report(new DownloadProgress
+                {
+                    DownloadedBytes = existingBytes,
+                    TotalBytes = totalBytes,
+                    Percentage = percentage,
+                    Speed = speed,
+                    Eta = eta
+                });
             }
         }
     }
@@ -32,7 +57,7 @@ class DownloadService
     public async Task DownloadAsync(
         string url,
         string destination,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
     {
 
 
@@ -84,8 +109,7 @@ class DownloadService
                 output,
                 existingBytes,
                 totalBytes,
-
-                cancellationToken);
+                cancellationToken, progress);
         }
         else if (response.StatusCode == HttpStatusCode.OK)
         {
@@ -97,7 +121,7 @@ class DownloadService
             using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
 
             using FileStream output = new(destination, FileMode.Create, FileAccess.Write, FileShare.None);
-            await ShowProgress(input, output, 0, totalBytes, cancellationToken);
+            await ShowProgress(input, output, 0, totalBytes, cancellationToken, progress);
         }
         else if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
