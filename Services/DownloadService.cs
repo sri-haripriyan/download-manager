@@ -141,6 +141,7 @@ class DownloadService
         {
             response.EnsureSuccessStatusCode();
         }
+        Console.WriteLine();
         Console.WriteLine("Download completed");
     }
 }

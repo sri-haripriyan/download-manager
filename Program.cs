@@ -18,10 +18,10 @@
         using CancellationTokenSource tokenSource = new();
         var progress = new Progress<DownloadProgress>(p =>
         {
-            Console.WriteLine(
-                $"Progress: {p.Percentage:F2}% | " +
-                $"Speed: {Util.FormatBytes(p.Speed)}/s | " +
-                $"ETA: {p.Eta.TotalSeconds:F0}s");
+            Console.Write(
+    $"\rProgress: {p.Percentage:F2}% | " +
+    $"Speed: {Util.FormatBytes(p.Speed)}/s | " +
+    $"ETA: {p.Eta.TotalSeconds:F0}s");
         });
         Task downloadTask = service.DownloadAsync(url, destination, tokenSource.Token, progress);
 
@@ -48,10 +48,12 @@
         }
         catch (OperationCanceledException)
         {
+            Console.WriteLine();
             Console.WriteLine("Download cancelled.");
         }
         catch (Exception e)
         {
+            Console.WriteLine();
             Console.WriteLine($"Download failed: {e.Message}");
         }
     }
