@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
+using Microsoft.VisualBasic;
 
 class DownloadService
 {
@@ -44,8 +45,7 @@ class DownloadService
 
                 progress.Report(new DownloadProgress
                 {
-                    DownloadedBytes = existingBytes,
-                    TotalBytes = totalBytes,
+                    TaskRunning = Thread.CurrentThread.Name,
                     Percentage = percentage,
                     Speed = speed,
                     Eta = eta
@@ -57,51 +57,59 @@ class DownloadService
     public async Task DownloadAsync(
         string url,
         string destination,
-        CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
+        CancellationToken cancellationToken, IProgress<DownloadProgress> progress,
+        SemaphoreSlim semaphoreSlim)
     {
-        int maxRetries = 3;
-        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        await semaphoreSlim.WaitAsync();
+        try
         {
-            try
+            int maxRetries = 3;
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
             {
-                Console.WriteLine(
-                $"Download attempt {attempt + 1}");
-                await DownloadOnceAsync(
-                url,
-                destination,
-                cancellationToken,
-                progress);
-
-                return;
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == maxRetries)
+                try
                 {
                     Console.WriteLine(
-                        "Maximum retry attempts reached.");
+                    $"Download attempt {attempt + 1}");
+                    await DownloadOnceAsync(
+                    url,
+                    destination,
+                    cancellationToken,
+                    progress);
 
+                    return;
+                }
+                catch (OperationCanceledException)
+                {
                     throw;
                 }
+                catch (Exception ex)
+                {
+                    if (attempt == maxRetries)
+                    {
+                        Console.WriteLine(
+                            "Maximum retry attempts reached.");
 
-                int delaySeconds =
-                    (int)Math.Pow(2, attempt + 2);
+                        throw;
+                    }
 
-                Console.WriteLine(
-                    $"Download failed: {ex.Message}");
+                    int delaySeconds =
+                        (int)Math.Pow(2, attempt + 2);
 
-                Console.WriteLine(
-                    $"Retrying in {delaySeconds} seconds...");
+                    Console.WriteLine(
+                        $"Download failed: {ex.Message}");
 
-                await Task.Delay(
-                    TimeSpan.FromSeconds(delaySeconds),
-                    cancellationToken);
+                    Console.WriteLine(
+                        $"Retrying in {delaySeconds} seconds...");
+
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(delaySeconds),
+                        cancellationToken);
+                }
             }
-
+        }
+        finally
+        {
+            semaphoreSlim.Release();
         }
     }
 

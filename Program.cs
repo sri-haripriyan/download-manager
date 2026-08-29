@@ -14,19 +14,25 @@
     {
         var service = new DownloadService();
         var url = "https://httptest.pp.ua/range/1048576";
-        var destination = "downloaded-file";
+        var destination1 = "downloaded-file1";
+        var destination2 = "downloaded-file2";
+        var destination3 = "downloaded-file3";
+
+        SemaphoreSlim semaphoreSlim = new(2);
+
         using CancellationTokenSource tokenSource = new();
         var progress = new Progress<DownloadProgress>(p =>
         {
             Console.Write(
     $"\rProgress: {p.Percentage:F2}% | " +
     $"Speed: {Util.FormatBytes(p.Speed)}/s | " +
-    $"ETA: {p.Eta.TotalSeconds:F0}s");
+    $"ETA: {p.Eta.TotalSeconds:F0}s" + $"Task: {p.TaskRunning}");
         });
-        Task downloadTask = service.DownloadAsync(url, destination, tokenSource.Token, progress);
 
 
-
+        Task task1 = service.DownloadAsync(url, destination1, tokenSource.Token, progress, semaphoreSlim);
+        Task task2 = service.DownloadAsync(url, destination2, tokenSource.Token, progress, semaphoreSlim);
+        Task task3 = service.DownloadAsync(url, destination3, tokenSource.Token, progress, semaphoreSlim);
 
         Task listenForkey = Task.Run(() =>
         {
@@ -44,7 +50,7 @@
 
         try
         {
-            await downloadTask;
+            await Task.WhenAll(task1, task2, task3);
         }
         catch (OperationCanceledException)
         {
