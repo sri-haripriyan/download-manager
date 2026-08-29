@@ -59,6 +59,57 @@ class DownloadService
         string destination,
         CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
     {
+        int maxRetries = 3;
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                Console.WriteLine(
+                $"Download attempt {attempt + 1}");
+                await DownloadOnceAsync(
+                url,
+                destination,
+                cancellationToken,
+                progress);
+
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == maxRetries)
+                {
+                    Console.WriteLine(
+                        "Maximum retry attempts reached.");
+
+                    throw;
+                }
+
+                int delaySeconds =
+                    (int)Math.Pow(2, attempt + 2);
+
+                Console.WriteLine(
+                    $"Download failed: {ex.Message}");
+
+                Console.WriteLine(
+                    $"Retrying in {delaySeconds} seconds...");
+
+                await Task.Delay(
+                    TimeSpan.FromSeconds(delaySeconds),
+                    cancellationToken);
+            }
+
+        }
+    }
+
+    public async Task DownloadOnceAsync(
+        string url,
+        string destination,
+        CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
+    {
 
 
         long existingBytes = 0;
