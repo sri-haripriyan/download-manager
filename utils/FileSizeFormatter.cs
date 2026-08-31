@@ -1,4 +1,4 @@
-class Util
+class FileSizeFormatter
 {
     public static string FormatBytes(double bytes)
     {
