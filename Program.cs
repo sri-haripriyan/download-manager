@@ -16,11 +16,14 @@
         DownloadManager manager = new(new DownloadService(), 3);
         var url = "https://httptest.pp.ua/range/1048576";
 
-        var download1 = manager.AddDownload(url, "file1");
-        var download2 = manager.AddDownload(url, "file2");
-
-        Task task1 = manager.StartDownloadAsync(download1);
-        Task task2 = manager.StartDownloadAsync(download2);
+        manager.AddDownload(url, "file1");
+        manager.AddDownload(url, "file2");
+        var download3 = manager.AddDownload(url, "file3");
+        manager.AddDownload(url, "file4");
+        manager.AddDownload(url, "file5");
+        // manager.AddDownload(url, "file6");
+        // manager.AddDownload(url, "file7");
+        // manager.AddDownload(url, "file8");
 
         Task keyListener = Task.Run(() =>
         {
@@ -28,14 +31,21 @@
             {
                 var key = Console.ReadKey(true);
 
+                if (key.Key == ConsoleKey.P)
+                {
+                    Console.WriteLine("Downloader id: Status");
+                    foreach (var download in manager.Downloads)
+                    {
+                        Console.Write($"{download.Id}:\t {download.Status}\n");
+                    }
+                }
                 if (key.Key == ConsoleKey.C)
                 {
-                    manager.CancelDownload(download1);
-                    break;
+                    manager.CancelDownload(download3);
                 }
             }
         });
+        await manager.StartAllAsync();
 
-        await Task.WhenAll(task1, task2);
     }
 }
