@@ -17,10 +17,10 @@
         var url = "https://httptest.pp.ua/range/1048576";
 
         manager.AddDownload(url, "file1");
-        manager.AddDownload(url, "file2");
+        var download2 = manager.AddDownload(url, "file2");
         var download3 = manager.AddDownload(url, "file3");
         manager.AddDownload(url, "file4");
-        manager.AddDownload(url, "file5");
+        var download5 = manager.AddDownload(url, "file5");
         // manager.AddDownload(url, "file6");
         // manager.AddDownload(url, "file7");
         // manager.AddDownload(url, "file8");
@@ -38,6 +38,10 @@
                     {
                         Console.Write($"{download.Id}:\t {download.Status}\n");
                     }
+                }
+                if (key.Key == ConsoleKey.X)
+                {
+                    manager.PauseDownload(download5);
                 }
                 if (key.Key == ConsoleKey.C)
                 {

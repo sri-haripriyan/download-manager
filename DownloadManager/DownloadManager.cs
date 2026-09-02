@@ -4,11 +4,13 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 {
     private readonly DownloadService _downloadService = downloadService;
 
-    private readonly Queue<DownloadItem> DownloadQueue = new();
+    private readonly ConcurrentQueue<DownloadItem> DownloadQueue = new();
 
     private readonly List<DownloadItem> _downloads = [];
 
     public IReadOnlyList<DownloadItem> Downloads => _downloads;
+
+    private bool IsProcessing = false;
 
 
     public DownloadItem AddDownload(string url, string destination)
@@ -48,7 +50,8 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         }
         catch (OperationCanceledException)
         {
-            download.Status = DownloadStatus.Cancelled;
+            if (download.Status != DownloadStatus.Paused)
+                download.Status = DownloadStatus.Cancelled;
         }
         catch (Exception e)
         {
@@ -67,6 +70,33 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         }
     }
 
+    public void PauseDownload(DownloadItem download)
+    {
+        if (download.Status != DownloadStatus.Downloading)
+            return;
+        download.Status = DownloadStatus.Paused;
+        download.CancellationTokenSource.Cancel();
+    }
+
+    public async Task ResumeDownloadAsync(DownloadItem download)
+    {
+        if (download.Status != DownloadStatus.Paused)
+            return;
+
+        download.CancellationTokenSource.Dispose();
+        download.CancellationTokenSource = new CancellationTokenSource();
+
+        download.Status = DownloadStatus.Waiting;
+
+        DownloadQueue.Enqueue(download);
+
+        if (!IsProcessing)
+        {
+            await StartAllAsync();
+        }
+
+    }
+
     public void CancelAll()
     {
         foreach (var download in _downloads)
@@ -77,6 +107,10 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
     public async Task StartAllAsync()
     {
+        if (IsProcessing)
+            return;
+        IsProcessing = true;
+
         var workers = new List<Task>();
 
         for (int i = 0; i < maxConcurrentDownloads; i++)
@@ -87,9 +121,8 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     }
     private async Task ProcessQueueAsync()
     {
-        while (DownloadQueue.Count > 0)
+        while (DownloadQueue.TryDequeue(out DownloadItem? download))
         {
-            DownloadItem download = DownloadQueue.Dequeue(); // cause indefinite behaviour in multithreading.. need to change
 
             if (download.CancellationTokenSource.IsCancellationRequested)
             {

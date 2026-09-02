@@ -14,7 +14,7 @@ public class DownloadItem
 
     public TimeSpan Eta { get; internal set; }
 
-    internal CancellationTokenSource CancellationTokenSource { get; }
+    internal CancellationTokenSource CancellationTokenSource { get; set; }
 
     public DownloadItem(string url, string destination)
     {
