@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 public class DownloadManager(DownloadService downloadService, int maxConcurrentDownloads)
 {
     private readonly DownloadService _downloadService = downloadService;
 
-    private readonly ConcurrentQueue<DownloadItem> DownloadQueue = new();
+    private readonly Channel<DownloadItem> DownloadQueue = Channel.CreateUnbounded<DownloadItem>();
 
     private readonly List<DownloadItem> _downloads = [];
 
@@ -12,13 +13,15 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
     private bool IsProcessing = false;
 
+    private readonly List<Task> _workers = [];
+
 
     public DownloadItem AddDownload(string url, string destination)
     {
         var download = new DownloadItem(
             url,
             destination);
-        DownloadQueue.Enqueue(download);
+        DownloadQueue.Writer.TryWrite(download);
         _downloads.Add(download);
 
         return download;
@@ -27,8 +30,6 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     public async Task StartDownloadAsync(DownloadItem download)
     {
         download.Status = DownloadStatus.Waiting;
-
-
 
         try
         {
@@ -78,7 +79,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         download.CancellationTokenSource.Cancel();
     }
 
-    public async Task ResumeDownloadAsync(DownloadItem download)
+    public void ResumeDownloadAsync(DownloadItem download)
     {
         if (download.Status != DownloadStatus.Paused)
             return;
@@ -88,12 +89,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
         download.Status = DownloadStatus.Waiting;
 
-        DownloadQueue.Enqueue(download);
-
-        if (!IsProcessing)
-        {
-            await StartAllAsync();
-        }
+        DownloadQueue.Writer.TryWrite(download);
 
     }
 
@@ -105,23 +101,20 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         }
     }
 
-    public async Task StartAllAsync()
+    public void StartWorkers()
     {
         if (IsProcessing)
             return;
         IsProcessing = true;
 
-        var workers = new List<Task>();
-
         for (int i = 0; i < maxConcurrentDownloads; i++)
         {
-            workers.Add(ProcessQueueAsync());
+            _workers.Add(ProcessQueueAsync());
         }
-        await Task.WhenAll(workers);
     }
     private async Task ProcessQueueAsync()
     {
-        while (DownloadQueue.TryDequeue(out DownloadItem? download))
+        await foreach (var download in DownloadQueue.Reader.ReadAllAsync())
         {
 
             if (download.CancellationTokenSource.IsCancellationRequested)
@@ -131,6 +124,19 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
             }
 
             await StartDownloadAsync(download);
+        }
+    }
+
+    public async Task StopWorkers()
+    {
+        DownloadQueue.Writer.Complete();
+        try
+        {
+            await Task.WhenAll(_workers);
+        }
+        finally
+        {
+            IsProcessing = false;
         }
     }
 

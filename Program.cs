@@ -16,11 +16,11 @@
         DownloadManager manager = new(new DownloadService(), 3);
         var url = "https://httptest.pp.ua/range/1048576";
 
-        manager.AddDownload(url, "file1");
-        var download2 = manager.AddDownload(url, "file2");
-        var download3 = manager.AddDownload(url, "file3");
-        manager.AddDownload(url, "file4");
-        var download5 = manager.AddDownload(url, "file5");
+        manager.AddDownload(url, "test/file1");
+        var download2 = manager.AddDownload(url, "test/file2");
+        var download3 = manager.AddDownload(url, "test/file3");
+        manager.AddDownload(url, "test/file4");
+        var download5 = manager.AddDownload(url, "test/file5");
         // manager.AddDownload(url, "file6");
         // manager.AddDownload(url, "file7");
         // manager.AddDownload(url, "file8");
@@ -49,7 +49,8 @@
                 }
             }
         });
-        await manager.StartAllAsync();
+        manager.StartWorkers();
+        await manager.StopWorkers();
 
     }
 }
