@@ -11,6 +11,8 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
     public IReadOnlyList<DownloadItem> Downloads => _downloads;
 
+    private readonly CancellationTokenSource ShutdownCts = new();
+
     private bool IsProcessing = false;
 
     private readonly List<Task> _workers = [];
@@ -21,7 +23,10 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         var download = new DownloadItem(
             url,
             destination);
-        DownloadQueue.Writer.TryWrite(download);
+        if (!DownloadQueue.Writer.TryWrite(download))
+        {
+            throw new InvalidOperationException("Download manager is shutting down.");
+        }
         _downloads.Add(download);
 
         return download;
@@ -89,7 +94,10 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
         download.Status = DownloadStatus.Waiting;
 
-        DownloadQueue.Writer.TryWrite(download);
+        if (!DownloadQueue.Writer.TryWrite(download))
+        {
+            throw new InvalidOperationException("Download manager is shutting down.");
+        }
 
     }
 
@@ -114,7 +122,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     }
     private async Task ProcessQueueAsync()
     {
-        await foreach (var download in DownloadQueue.Reader.ReadAllAsync())
+        await foreach (var download in DownloadQueue.Reader.ReadAllAsync(ShutdownCts.Token))
         {
 
             if (download.CancellationTokenSource.IsCancellationRequested)
@@ -138,6 +146,35 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         {
             IsProcessing = false;
         }
+    }
+
+    public async Task StopAsync()
+    {
+        if (!IsProcessing)
+            return;
+
+        DownloadQueue.Writer.Complete();
+
+        ShutdownCts.Cancel();
+
+        foreach (var download in _downloads)
+        {
+            if (download.Status == DownloadStatus.Downloading)
+            {
+                download.CancellationTokenSource.Cancel();
+            }
+        }
+
+        try
+        {
+            await Task.WhenAll(_workers);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("All tasks cancelled and app shutdown gracefully");
+        }
+
+        IsProcessing = false;
     }
 
 }

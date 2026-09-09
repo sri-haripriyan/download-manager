@@ -50,7 +50,8 @@
             }
         });
         manager.StartWorkers();
-        await manager.StopWorkers();
+        // await manager.StopWorkers();
+        await manager.StopAsync();
 
     }
 }
