@@ -51,7 +51,7 @@
         });
         manager.StartWorkers();
         // await manager.StopWorkers();
-        await manager.StopAsync();
+        await manager.ShutDown();
 
     }
 }

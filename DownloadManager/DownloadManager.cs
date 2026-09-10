@@ -70,10 +70,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     public void CancelDownload(DownloadItem download)
     {
         download.CancellationTokenSource.Cancel();
-        if (download.Status == DownloadStatus.Waiting)
-        {
-            download.Status = DownloadStatus.Cancelled;
-        }
+        download.Status = DownloadStatus.Cancelled;
     }
 
     public void PauseDownload(DownloadItem download)
@@ -84,7 +81,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         download.CancellationTokenSource.Cancel();
     }
 
-    public void ResumeDownloadAsync(DownloadItem download)
+    public void ResumeDownload(DownloadItem download)
     {
         if (download.Status != DownloadStatus.Paused)
             return;
@@ -105,6 +102,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     {
         foreach (var download in _downloads)
         {
+            download.Status = DownloadStatus.Cancelled;
             download.CancellationTokenSource.Cancel();
         }
     }
@@ -135,20 +133,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         }
     }
 
-    public async Task StopWorkers()
-    {
-        DownloadQueue.Writer.Complete();
-        try
-        {
-            await Task.WhenAll(_workers);
-        }
-        finally
-        {
-            IsProcessing = false;
-        }
-    }
-
-    public async Task StopAsync()
+    public async Task ShutDown()
     {
         if (!IsProcessing)
             return;
@@ -177,4 +162,20 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         IsProcessing = false;
     }
 
+    public void RetryDownload(DownloadItem download)
+    {
+        if (download.Status != DownloadStatus.Failed)
+            return;
+
+        download.CancellationTokenSource.Dispose();
+        download.CancellationTokenSource = new CancellationTokenSource();
+
+        download.Status = DownloadStatus.Waiting;
+
+        if (!DownloadQueue.Writer.TryWrite(download))
+        {
+            download.Status = DownloadStatus.Failed;
+            throw new InvalidOperationException("Unable to queue download for retry.");
+        }
+    }
 }
