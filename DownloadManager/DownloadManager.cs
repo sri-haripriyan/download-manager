@@ -23,6 +23,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         var download = new DownloadItem(
             url,
             destination);
+        download.Status = DownloadStatus.Waiting;
         if (!DownloadQueue.Writer.TryWrite(download))
         {
             throw new InvalidOperationException("Download manager is shutting down.");
@@ -144,8 +145,9 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
         foreach (var download in _downloads)
         {
-            if (download.Status == DownloadStatus.Downloading)
+            if (download.Status == DownloadStatus.Downloading || download.Status == DownloadStatus.Waiting)
             {
+                download.Status = DownloadStatus.Cancelled;
                 download.CancellationTokenSource.Cancel();
             }
         }
