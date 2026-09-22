@@ -24,8 +24,6 @@ public class DownloadItem
         Url = url;
         Destination = destination;
 
-        Status = DownloadStatus.Waiting;
-
         CancellationTokenSource = new CancellationTokenSource();
     }
 

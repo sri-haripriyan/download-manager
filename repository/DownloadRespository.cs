@@ -1,12 +1,15 @@
 using Microsoft.Data.Sqlite;
+
 public class DownloadRepository
 {
     private readonly string _connectionString;
+
     public DownloadRepository(string connectionString = "Data Source=downloads.db")
     {
         _connectionString = connectionString;
         Initialize();
     }
+
     public void Initialize()
     {
         using var connection = new SqliteConnection(_connectionString);
@@ -15,25 +18,25 @@ public class DownloadRepository
         using var command = connection.CreateCommand();
 
         command.CommandText = """
-        CREATE TABLE IF NOT EXISTS Downloads (
-            Id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Url TEXT NOT NULL,
-            Destination TEXT NOT NULL,
-            Status TEXT NOT NULL,
-            DownloadedBytes INTEGER NOT NULL DEFAULT 0,
-            TotalBytes INTEGER NULL,
-            CreatedAt TEXT NOT NULL,
-            UpdatedAt TEXT NOT NULL
-        );
-        CREATE TRIGGER IF NOT EXISTS UpdateDownloadsUpdatedAt
-        AFTER UPDATE ON Downloads
-        FOR EACH ROW
-        BEGIN
-            UPDATE Downloads 
-            SET UpdatedAt = STRFTIME('%Y-%m-%dT%H:%M:%f', 'NOW', 'localtime')
-            WHERE Id = OLD.Id;
-        END;
-        """;
+            CREATE TABLE IF NOT EXISTS Downloads (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Url TEXT NOT NULL,
+                Destination TEXT NOT NULL,
+                Status TEXT NOT NULL,
+                DownloadedBytes INTEGER NOT NULL DEFAULT 0,
+                TotalBytes INTEGER NULL,
+                CreatedAt TEXT NOT NULL,
+                UpdatedAt TEXT NOT NULL
+            );
+            CREATE TRIGGER IF NOT EXISTS UpdateDownloadsUpdatedAt
+            AFTER UPDATE ON Downloads
+            FOR EACH ROW
+            BEGIN
+                UPDATE Downloads 
+                SET UpdatedAt = STRFTIME('%Y-%m-%dT%H:%M:%f', 'NOW', 'localtime')
+                WHERE Id = OLD.Id;
+            END;
+            """;
 
         command.ExecuteNonQuery();
     }
@@ -44,28 +47,28 @@ public class DownloadRepository
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-    INSERT INTO Downloads
-    (
-        Url,
-        Destination,
-        Status,
-        DownloadedBytes,
-        TotalBytes,
-        CreatedAt,
-        UpdatedAt
-    )
-    VALUES
-    (
-        @url,
-        @destination,
-        @status,
-        @downloadedBytes,
-        @totalBytes,
-        @createdAt,
-        @updatedAt
-    );
-    SELECT last_insert_rowid();
-    """;
+            INSERT INTO Downloads
+            (
+                Url,
+                Destination,
+                Status,
+                DownloadedBytes,
+                TotalBytes,
+                CreatedAt,
+                UpdatedAt
+            )
+            VALUES
+            (
+                @url,
+                @destination,
+                @status,
+                @downloadedBytes,
+                @totalBytes,
+                @createdAt,
+                @updatedAt
+            );
+            SELECT last_insert_rowid();
+            """;
 
         command.Parameters.AddWithValue("@url", download.Url);
         command.Parameters.AddWithValue("@destination", download.Destination);
@@ -74,9 +77,8 @@ public class DownloadRepository
 
         command.Parameters.AddWithValue(
             "@totalBytes",
-            download.TotalBytes.HasValue
-                ? download.TotalBytes.Value
-                : DBNull.Value);
+            download.TotalBytes.HasValue ? download.TotalBytes.Value : DBNull.Value
+        );
 
         command.Parameters.AddWithValue("@createdAt", download.CreatedAt.ToString("O"));
         command.Parameters.AddWithValue("@updatedAt", download.UpdatedAt.ToString("O"));
@@ -92,14 +94,14 @@ public class DownloadRepository
         using var command = connection.CreateCommand();
 
         command.CommandText = """
-        UPDATE Downloads
-        SET
-            Status = $status,
-            DownloadedBytes = $downloadedBytes,
-            TotalBytes = $totalBytes,
-            UpdatedAt = $updatedAt
-        WHERE Id = $id;
-        """;
+            UPDATE Downloads
+            SET
+                Status = $status,
+                DownloadedBytes = $downloadedBytes,
+                TotalBytes = $totalBytes,
+                UpdatedAt = $updatedAt
+            WHERE Id = $id;
+            """;
 
         command.Parameters.AddWithValue("$id", download.Id);
         command.Parameters.AddWithValue("$status", download.Status.ToString());
@@ -107,14 +109,83 @@ public class DownloadRepository
 
         command.Parameters.AddWithValue(
             "$totalBytes",
-            download.TotalBytes.HasValue
-                ? download.TotalBytes.Value
-                : DBNull.Value);
+            download.TotalBytes.HasValue ? download.TotalBytes.Value : DBNull.Value
+        );
 
-        command.Parameters.AddWithValue(
-            "$updatedAt",
-            download.UpdatedAt.ToString("O"));
+        command.Parameters.AddWithValue("$updatedAt", download.UpdatedAt.ToString("O"));
 
         command.ExecuteNonQuery();
+    }
+
+    public void Delete(int id)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            DELETE FROM Downloads
+            WHERE Id = $id;
+            """;
+
+        command.Parameters.AddWithValue("$id", id);
+
+        command.ExecuteNonQuery();
+    }
+
+    public List<DownloadItem> GetAll()
+    {
+        var downloads = new List<DownloadItem>();
+
+        using var connection = new SqliteConnection(_connectionString);
+
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT
+                Id,
+                Url,
+                Destination,
+                Status,
+                DownloadedBytes,
+                TotalBytes,
+                CreatedAt,
+                UpdatedAt
+            FROM Downloads
+            ORDER BY Id;
+            """;
+
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            var download = new DownloadItem(
+                reader.GetString(reader.GetOrdinal("Url")),
+                reader.GetString(reader.GetOrdinal("Destination"))
+            );
+
+            download.Id = reader.GetInt32(reader.GetOrdinal("Id"));
+
+            download.Status = Enum.Parse<DownloadStatus>(
+                reader.GetString(reader.GetOrdinal("Status"))
+            );
+
+            download.DownloadedBytes = reader.GetInt64(reader.GetOrdinal("DownloadedBytes"));
+
+            download.TotalBytes = reader.IsDBNull(reader.GetOrdinal("TotalBytes"))
+                ? null
+                : reader.GetInt64(reader.GetOrdinal("TotalBytes"));
+
+            download.CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("CreatedAt")));
+
+            download.UpdatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("UpdatedAt")));
+
+            downloads.Add(download);
+        }
+
+        return downloads;
     }
 }

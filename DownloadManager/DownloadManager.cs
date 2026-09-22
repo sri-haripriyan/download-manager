@@ -61,8 +61,22 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         }
         catch (OperationCanceledException)
         {
-            if (download.Status != DownloadStatus.Paused)
-                download.Status = DownloadStatus.Cancelled;
+            if (download.Status == DownloadStatus.Paused)
+            {
+                // PauseDownload already set the status.
+                return;
+            }
+
+            if (download.Status == DownloadStatus.Removed)
+            {
+                // RemoveDownload already handled everything.
+                return;
+            }
+
+            download.Status = DownloadStatus.Cancelled;
+            download.UpdatedAt = DateTime.UtcNow;
+
+            _downloadRepository.Update(download);
         }
         catch (Exception e)
         {
@@ -163,6 +177,10 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     {
         await foreach (var download in DownloadQueue.Reader.ReadAllAsync(ShutdownCts.Token))
         {
+            if (download.Status == DownloadStatus.Removed)
+            {
+                continue;
+            }
             if (download.CancellationTokenSource.IsCancellationRequested)
             {
                 download.Status = DownloadStatus.Cancelled;
@@ -225,5 +243,68 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
             download.Status = DownloadStatus.Failed;
             throw new InvalidOperationException("Unable to queue download for retry.");
         }
+    }
+
+    public void LoadDownloads()
+    {
+        var downloads = _downloadRepository.GetAll();
+
+        foreach (var download in downloads)
+        {
+            if (download.Status == DownloadStatus.Downloading)
+            {
+                download.Status = DownloadStatus.Waiting;
+                download.UpdatedAt = DateTime.UtcNow;
+
+                _downloadRepository.Update(download);
+            }
+
+            _downloads.Add(download);
+
+            if (
+                download.Status == DownloadStatus.Waiting
+                || download.Status == DownloadStatus.Paused
+            )
+            {
+                DownloadQueue.Writer.TryWrite(download);
+            }
+        }
+    }
+
+    public void RemoveDownload(DownloadItem download, bool deleteFile = true)
+    {
+        if (download.Status == DownloadStatus.Removed)
+            return;
+
+        // Stop the download if it is currently running
+        if (download.Status == DownloadStatus.Downloading)
+        {
+            download.Status = DownloadStatus.Removed;
+
+            download.CancellationTokenSource.Cancel();
+        }
+        else
+        {
+            download.Status = DownloadStatus.Removed;
+        }
+
+        // Delete the downloaded file if requested
+        if (deleteFile && File.Exists(download.Destination))
+        {
+            try
+            {
+                File.Delete(download.Destination);
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine($"Could not delete file: {ex.Message}");
+            }
+        }
+
+        // Remove from in-memory collection
+        _downloads.Remove(download);
+
+        // Remove from database
+        _downloadRepository.Delete(download.Id);
     }
 }
