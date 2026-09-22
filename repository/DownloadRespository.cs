@@ -83,7 +83,11 @@ public class DownloadRepository
         command.Parameters.AddWithValue("@createdAt", download.CreatedAt.ToString("O"));
         command.Parameters.AddWithValue("@updatedAt", download.UpdatedAt.ToString("O"));
 
-        return Convert.ToInt32(command.ExecuteScalar());
+        var id = Convert.ToInt32(command.ExecuteScalar());
+
+        download.Id = id;
+
+        return id;
     }
 
     public void Update(DownloadItem download)
