@@ -5,6 +5,8 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 {
     private readonly DownloadService _downloadService = downloadService;
 
+    private readonly DownloadRepository _downloadRepository = new();
+
     private readonly Channel<DownloadItem> DownloadQueue = Channel.CreateUnbounded<DownloadItem>();
 
     private readonly List<DownloadItem> _downloads = [];
@@ -17,17 +19,14 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
     private readonly List<Task> _workers = [];
 
-
     public DownloadItem AddDownload(string url, string destination)
     {
-        var download = new DownloadItem(
-            url,
-            destination);
-        download.Status = DownloadStatus.Waiting;
+        var download = new DownloadItem(url, destination) { Status = DownloadStatus.Waiting };
         if (!DownloadQueue.Writer.TryWrite(download))
         {
             throw new InvalidOperationException("Download manager is shutting down.");
         }
+        download.Id = _downloadRepository.Insert(download);
         _downloads.Add(download);
 
         return download;
@@ -36,23 +35,28 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
     public async Task StartDownloadAsync(DownloadItem download)
     {
         download.Status = DownloadStatus.Waiting;
+        using var persistenceCts = new CancellationTokenSource();
 
+        var persistenceTask = PersistProgressPeriodicallyAsync(download, persistenceCts.Token);
         try
         {
             download.Status = DownloadStatus.Downloading;
+            _downloadRepository.Update(download);
             var progress = new Progress<DownloadProgress>(p =>
             {
                 Console.Write(
-                    $"\rProgress: {p.Percentage:F2}% | " +
-                    $"Speed: {FileSizeFormatter.FormatBytes(p.Speed)}/s | " +
-                    $"ETA: {p.Eta.TotalSeconds:F0}s" + $"Task: {p.TaskRunning}");
+                    $"\rProgress: {p.Percentage:F2}% | "
+                        + $"Speed: {FileSizeFormatter.FormatBytes(p.Speed)}/s | "
+                        + $"ETA: {p.Eta.TotalSeconds:F0}s"
+                        + $"Task: {p.TaskRunning}"
+                );
             });
 
             await _downloadService.DownloadAsync(
-                download.Url,
-                download.Destination,
+                download,
                 download.CancellationTokenSource.Token,
-                progress);
+                progress
+            );
             download.Status = DownloadStatus.Completed;
         }
         catch (OperationCanceledException)
@@ -65,13 +69,46 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
             Console.WriteLine($"Error downloading {download.Destination}: {e.Message}");
             download.Status = DownloadStatus.Failed;
         }
+        finally
+        {
+            persistenceCts.Cancel();
 
+            try
+            {
+                await persistenceTask;
+            }
+            catch (OperationCanceledException) { }
+            _downloadRepository.Update(download);
+        }
+    }
+
+    private async Task PersistProgressPeriodicallyAsync(
+        DownloadItem download,
+        CancellationToken cancellationToken
+    )
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                download.UpdatedAt = DateTime.UtcNow;
+
+                _downloadRepository.Update(download);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the download finishes/cancels.
+        }
     }
 
     public void CancelDownload(DownloadItem download)
     {
         download.CancellationTokenSource.Cancel();
         download.Status = DownloadStatus.Cancelled;
+        _downloadRepository.Update(download);
     }
 
     public void PauseDownload(DownloadItem download)
@@ -80,6 +117,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
             return;
         download.Status = DownloadStatus.Paused;
         download.CancellationTokenSource.Cancel();
+        _downloadRepository.Update(download);
     }
 
     public void ResumeDownload(DownloadItem download)
@@ -90,13 +128,13 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         download.CancellationTokenSource.Dispose();
         download.CancellationTokenSource = new CancellationTokenSource();
 
+        _downloadRepository.Update(download);
         download.Status = DownloadStatus.Waiting;
 
         if (!DownloadQueue.Writer.TryWrite(download))
         {
             throw new InvalidOperationException("Download manager is shutting down.");
         }
-
     }
 
     public void CancelAll()
@@ -104,6 +142,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         foreach (var download in _downloads)
         {
             download.Status = DownloadStatus.Cancelled;
+            _downloadRepository.Update(download);
             download.CancellationTokenSource.Cancel();
         }
     }
@@ -119,14 +158,16 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
             _workers.Add(ProcessQueueAsync());
         }
     }
+
     private async Task ProcessQueueAsync()
     {
         await foreach (var download in DownloadQueue.Reader.ReadAllAsync(ShutdownCts.Token))
         {
-
             if (download.CancellationTokenSource.IsCancellationRequested)
             {
                 download.Status = DownloadStatus.Cancelled;
+                _downloadRepository.Update(download);
+
                 continue;
             }
 
@@ -145,11 +186,15 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
         foreach (var download in _downloads)
         {
-            if (download.Status == DownloadStatus.Downloading || download.Status == DownloadStatus.Waiting)
+            if (
+                download.Status == DownloadStatus.Downloading
+                || download.Status == DownloadStatus.Waiting
+            )
             {
                 download.Status = DownloadStatus.Cancelled;
                 download.CancellationTokenSource.Cancel();
             }
+            _downloadRepository.Update(download);
         }
 
         try
@@ -173,6 +218,7 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
         download.CancellationTokenSource = new CancellationTokenSource();
 
         download.Status = DownloadStatus.Waiting;
+        _downloadRepository.Update(download);
 
         if (!DownloadQueue.Writer.TryWrite(download))
         {

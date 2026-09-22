@@ -1,6 +1,6 @@
 public class DownloadItem
 {
-    public Guid Id { get; } = Guid.NewGuid();
+    public int Id { get; set; }
 
     public string Url { get; }
 
@@ -14,6 +14,9 @@ public class DownloadItem
 
     public TimeSpan Eta { get; internal set; }
 
+    public long? TotalBytes { get; internal set; }
+    public long DownloadedBytes { get; internal set; }
+
     internal CancellationTokenSource CancellationTokenSource { get; set; }
 
     public DownloadItem(string url, string destination)
@@ -25,4 +28,7 @@ public class DownloadItem
 
         CancellationTokenSource = new CancellationTokenSource();
     }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
