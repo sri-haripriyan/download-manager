@@ -2,11 +2,17 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 
-public class DownloadService
+public class DownloadService : IDownloadService
 {
     private readonly HttpClient _httpClient = new();
 
-    public async Task ShowProgress(Stream input, FileStream output, DownloadItem download, CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
+    public async Task ShowProgress(
+        Stream input,
+        FileStream output,
+        DownloadItem download,
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress> progress
+    )
     {
         long sessionBytes = 0;
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -36,12 +42,14 @@ public class DownloadService
             double percentage = 0;
             TimeSpan eta = TimeSpan.Zero;
 
-            if (download.TotalBytes.HasValue &&
-                download.TotalBytes.Value > 0)
+            if (download.TotalBytes.HasValue && download.TotalBytes.Value > 0)
             {
                 percentage = (double)download.DownloadedBytes / download.TotalBytes.Value * 100;
 
-                long remainingBytes = Math.Max(0, download.TotalBytes.Value - download.DownloadedBytes);
+                long remainingBytes = Math.Max(
+                    0,
+                    download.TotalBytes.Value - download.DownloadedBytes
+                );
 
                 if (speed > 0)
                 {
@@ -49,19 +57,25 @@ public class DownloadService
                 }
             }
 
-            progress.Report(new DownloadProgress
-            {
-                TaskRunning = Thread.CurrentThread.Name,
-                DownloadedBytes = download.DownloadedBytes,
-                TotalBytes = download.TotalBytes ?? 0,
-                Percentage = percentage,
-                Speed = speed,
-                Eta = eta
-            });
+            progress.Report(
+                new DownloadProgress
+                {
+                    TaskRunning = Thread.CurrentThread.Name,
+                    DownloadedBytes = download.DownloadedBytes,
+                    TotalBytes = download.TotalBytes ?? 0,
+                    Percentage = percentage,
+                    Speed = speed,
+                    Eta = eta,
+                }
+            );
         }
     }
 
-    public async Task DownloadAsync(DownloadItem download, CancellationToken cancellationToken, IProgress<DownloadProgress> progress)
+    public async Task DownloadAsync(
+        DownloadItem download,
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress> progress
+    )
     {
         int maxRetries = 3;
 
@@ -100,7 +114,8 @@ public class DownloadService
     public async Task DownloadOnceAsync(
         DownloadItem download,
         CancellationToken cancellationToken,
-        IProgress<DownloadProgress> progress)
+        IProgress<DownloadProgress> progress
+    )
     {
         long existingBytes = 0;
 
@@ -124,7 +139,11 @@ public class DownloadService
             request.Headers.Range = new RangeHeaderValue(existingBytes, null);
         }
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken
+        );
 
         if (response.StatusCode == HttpStatusCode.PartialContent)
         {
@@ -142,17 +161,13 @@ public class DownloadService
             using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
 
             using FileStream output = new(
-                    download.Destination,
-                    FileMode.Append,
-                    FileAccess.Write,
-                    FileShare.None);
+                download.Destination,
+                FileMode.Append,
+                FileAccess.Write,
+                FileShare.None
+            );
 
-            await ShowProgress(
-                input,
-                output,
-                download,
-                cancellationToken,
-                progress);
+            await ShowProgress(input, output, download, cancellationToken, progress);
         }
         else if (response.StatusCode == HttpStatusCode.OK)
         {
@@ -167,43 +182,33 @@ public class DownloadService
             using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
 
             using FileStream output = new(
-                    download.Destination,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None);
+                download.Destination,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None
+            );
 
-            await ShowProgress(
-                input,
-                output,
-                download,
-                cancellationToken,
-                progress);
+            await ShowProgress(input, output, download, cancellationToken, progress);
         }
-        else if (
-            response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+        else if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
-            var contentRange =
-                response.Content.Headers.ContentRange;
+            var contentRange = response.Content.Headers.ContentRange;
 
             // Server tells us the actual total size through:
             // Content-Range: bytes */1048576
             if (contentRange?.Length != null)
             {
-                download.TotalBytes =
-                    contentRange.Length.Value;
+                download.TotalBytes = contentRange.Length.Value;
 
-                if (download.DownloadedBytes ==
-                    download.TotalBytes.Value)
+                if (download.DownloadedBytes == download.TotalBytes.Value)
                 {
-                    Console.WriteLine(
-                        "File is already fully downloaded.");
+                    Console.WriteLine("File is already fully downloaded.");
 
                     return;
                 }
             }
 
-            throw new Exception(
-                "Requested range is not satisfiable.");
+            throw new Exception("Requested range is not satisfiable.");
         }
         else
         {

@@ -13,7 +13,7 @@
 
     static async Task Main()
     {
-        DownloadManager manager = new(new DownloadService(), 2);
+        DownloadManager manager = new(new DownloadService(), new DownloadRepository(), 2);
         var url = "https://httptest.pp.ua/range/1048576";
 
         // var download1 = manager.AddDownload(url, "test/file1");

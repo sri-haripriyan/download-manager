@@ -1,11 +1,15 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
-public class DownloadManager(DownloadService downloadService, int maxConcurrentDownloads)
+public class DownloadManager(
+    IDownloadService downloadService,
+    IDownloadRepository downloadRepository,
+    int maxConcurrentDownloads
+)
 {
-    private readonly DownloadService _downloadService = downloadService;
+    private readonly IDownloadService _downloadService = downloadService;
 
-    private readonly DownloadRepository _downloadRepository = new();
+    private readonly IDownloadRepository _downloadRepository = downloadRepository;
 
     private readonly Channel<DownloadItem> DownloadQueue = Channel.CreateUnbounded<DownloadItem>();
 
@@ -147,7 +151,12 @@ public class DownloadManager(DownloadService downloadService, int maxConcurrentD
 
         if (!DownloadQueue.Writer.TryWrite(download))
         {
-            throw new InvalidOperationException("Download manager is shutting down.");
+            download.Status = DownloadStatus.Paused;
+            _downloadRepository.Update(download);
+
+            throw new InvalidOperationException(
+                "Unable to queue download because the manager is shutting down."
+            );
         }
     }
 

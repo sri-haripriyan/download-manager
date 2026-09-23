@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-public class DownloadRepository
+public class DownloadRepository : IDownloadRepository
 {
     private readonly string _connectionString;
 
